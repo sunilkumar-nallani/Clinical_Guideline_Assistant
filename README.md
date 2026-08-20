@@ -6,7 +6,7 @@
 
 
 Ask a clinical question about bacteremia and get an answer pulled straight 
-from hospital antibiotic stewardship guidelines, with the source document 
+from antibiotic stewardship guidelines, with the source document 
 and page number attached to every claim.
 
 **[👉 Try it live here](https://bacteremia-clinical-guideline-assistant.streamlit.app/)**
