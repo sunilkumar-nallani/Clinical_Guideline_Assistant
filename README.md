@@ -9,6 +9,9 @@ Ask a clinical question about bacteremia and get an answer pulled straight
 from antibiotic stewardship guidelines, with the source document 
 and page number attached to every claim.
 
+<img width="1867" height="808" alt="RAG_Bacteremia_UI" src="https://github.com/user-attachments/assets/6c8ea789-eddf-4dc7-955e-e98793058d1d" />
+
+
 **[👉 Try it live here](https://bacteremia-clinical-guideline-assistant.streamlit.app/)**
 
 Built to stop the back-and-forth of flipping through 20-page PDF guidelines for a quick answer. This is a research and prototyping tool, not a replacement for clinical judgment or an ID consult.
