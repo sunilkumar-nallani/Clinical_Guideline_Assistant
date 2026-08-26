@@ -1,9 +1,12 @@
-﻿streamlit
+streamlit
 python-dotenv
 langchain-community
 langchain-openai
 langchain-classic
 langchain-core
+langchain-text-splitters
 faiss-cpu
 tiktoken
 flashrank
+pdfplumber
+PyMuPDF

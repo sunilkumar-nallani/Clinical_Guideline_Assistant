@@ -1,11 +1,9 @@
 import streamlit as st
 
 # --------------------------------------------------------------------------
-# Pipeline import
+# Pipeline import — UI still loads and shows a clear message if index is
+# missing (e.g., fresh clone before running Build_Index.py)
 # --------------------------------------------------------------------------
-# Wrapped in try/except so the UI still loads (and shows a clear message)
-# if the FAISS index / pipeline module isn't available in this environment,
-# e.g. when someone clones the repo without running build_index.py first.
 try:
     from Rag_Pipeline import answer_question
     PIPELINE_READY = True
@@ -16,185 +14,340 @@ except Exception as e:  # noqa: BLE001
 
     def answer_question(_question: str) -> str:  # type: ignore
         return (
-            "⚠️ The retrieval pipeline could not be loaded, so this is a placeholder "
-            "response. Run `python build_index.py` to build the FAISS index, then "
-            "restart the app."
+            "⚠️ The retrieval pipeline could not be loaded. "
+            "Run `python Build_Index.py` to build the FAISS index, then restart the app."
         )
 
 # --------------------------------------------------------------------------
 # Page config
 # --------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Bacteremia Guideline Assistant",
-    page_icon="🩺",
+    page_title="KDIGO AKI/AKD Guideline Assistant",
+    page_icon="🫘",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # --------------------------------------------------------------------------
-# Styling — a calm, clinical "medtech" palette instead of default Streamlit
+# CSS — Apple/Gemini-inspired: clean whitespace, calm clinical palette,
+# smooth transitions, large tap targets for ward use on tablets
 # --------------------------------------------------------------------------
 st.markdown(
     """
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
         :root {
-            --clinical-teal: #0F6D6A;
-            --clinical-teal-dark: #0A4F4C;
-            --clinical-bg: #F4F8F8;
-            --clinical-card: #FFFFFF;
-            --clinical-border: #DCE7E6;
-            --clinical-text: #1F3A38;
-            --clinical-text-muted: #4B6664;
-            --clinical-amber: #B45309;
-            --clinical-amber-bg: #FFF7ED;
+            --teal:          #0D6E6B;
+            --teal-dark:     #094E4C;
+            --teal-hover:    #EBF5F5;
+            --teal-light:    #E0F2F1;
+            --bg:            #F5F7FA;
+            --surface:       #FFFFFF;
+            --border:        #E0E7E9;
+            --text-primary:  #1A3533;
+            --text-muted:    #52706E;
+            --amber:         #A85A00;
+            --amber-bg:      #FFF4E6;
+            --amber-border:  #F4C87A;
+            --error-bg:      #FEF2F2;
+            --error-text:    #991B1B;
+            --success-bg:    #ECFDF5;
+            --success-text:  #065F46;
+            --shadow-sm:     0 1px 4px rgba(0,0,0,0.06);
+            --shadow-md:     0 4px 16px rgba(13,110,107,0.12);
+            --radius:        12px;
+            --radius-sm:     8px;
         }
 
-        /* Force every text-bearing element to the light-theme palette.
-           This is the fix for the dark/black rendering — without it,
-           Streamlit falls back to the visitor's OS/browser dark-mode
-           colors for anything this stylesheet doesn't explicitly own. */
-        html, body, [class*="css"], .stApp, .stMarkdown, p, span, label, li {
-            font-family: 'Inter', sans-serif;
-            color: var(--clinical-text) !important;
+        /* ── Global reset ── */
+        html, body, .stApp {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg) !important;
+            color: var(--text-primary);
         }
 
-        .stApp {
-            background-color: var(--clinical-bg) !important;
+        /* Hide default Streamlit menu and footer, but keep header/sidebar controls functional */
+        #MainMenu { visibility: hidden; }
+        footer { visibility: hidden; }
+        header[data-testid="stHeader"] {
+            background: transparent !important;
+        }
+        /* Ensure sidebar toggle button is always visible and styled */
+        [data-testid="stSidebarCollapseButton"], 
+        [data-testid="collapsedControl"],
+        [data-testid="stSidebarCollapseButton"] button {
+            visibility: visible !important;
+            color: var(--teal) !important;
         }
 
-        /* Hide default Streamlit chrome for a cleaner product feel */
-        #MainMenu, footer {visibility: hidden;}
+        /* Fix Streamlit's own text colour in all contexts */
+        p, span, label, li, div, h1, h2, h3, h4, h5, h6 {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
 
-        /* ---------- Header ---------- */
+        /* ── App header ── */
         .app-header {
-            background: linear-gradient(135deg, var(--clinical-teal) 0%, var(--clinical-teal-dark) 100%);
-            padding: 1.3rem 1.6rem;
-            border-radius: 12px;
-            color: white;
-            margin-bottom: 0.7rem;
-            box-shadow: 0 4px 14px rgba(15, 109, 106, 0.18);
-        }
-        .app-header h1, .app-header p {
-            color: white !important;
+            background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
+            padding: 1.4rem 1.8rem;
+            border-radius: var(--radius);
+            margin-bottom: 0.75rem;
+            box-shadow: var(--shadow-md);
         }
         .app-header h1 {
-            margin: 0;
-            font-size: 1.4rem;
+            margin: 0 0 0.25rem 0;
+            font-size: 1.35rem;
             font-weight: 700;
+            color: #FFFFFF;
+            letter-spacing: -0.01em;
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            flex-wrap: wrap;
         }
-        .app-header p {
-            margin: 0.3rem 0 0 0;
-            font-size: 0.88rem;
-            opacity: 0.9;
-        }
-
-        /* Disclaimer as a slim inline strip, not a second big card */
-        .disclaimer-strip {
-            font-size: 0.78rem;
-            color: var(--clinical-amber) !important;
-            background: var(--clinical-amber-bg);
-            border-radius: 8px;
-            padding: 0.5rem 0.9rem;
-            margin-bottom: 1rem;
-            line-height: 1.45;
-        }
-        .disclaimer-strip strong { color: #7C3E0D !important; }
-
-        /* ---------- Sidebar ---------- */
-        section[data-testid="stSidebar"] {
-            background-color: #FFFFFF !important;
-            border-right: 1px solid var(--clinical-border);
-        }
-        section[data-testid="stSidebar"] * {
-            color: var(--clinical-text) !important;
-        }
-        section[data-testid="stSidebar"] h3 {
-            color: var(--clinical-teal-dark) !important;
-            font-size: 0.82rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            margin: 1.1rem 0 0.3rem 0;
-        }
-        section[data-testid="stSidebar"] p,
-        section[data-testid="stSidebar"] .stCaption,
-        section[data-testid="stSidebar"] small {
-            font-size: 0.83rem;
-            color: var(--clinical-text-muted) !important;
-        }
-        section[data-testid="stSidebar"] a {
-            color: var(--clinical-teal) !important;
-        }
-        section[data-testid="stSidebar"] hr {
-            margin: 1rem 0;
-            border-color: var(--clinical-border);
+        .app-header .subtitle {
+            margin: 0;
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.85);
+            font-weight: 400;
         }
 
-        /* Sample question chips */
-        div[data-testid="stButton"] > button {
-            background-color: #FFFFFF !important;
-            border: 1px solid var(--clinical-border) !important;
-            color: var(--clinical-text) !important;
-            border-radius: 8px;
-            padding: 0.5rem 0.75rem;
-            font-size: 0.8rem;
-            text-align: left;
-            width: 100%;
-            margin-bottom: 0.35rem;
-            transition: all 0.15s ease;
-        }
-        div[data-testid="stButton"] > button:hover {
-            border-color: var(--clinical-teal) !important;
-            color: var(--clinical-teal-dark) !important;
-            background-color: #EEF6F5 !important;
-        }
-
-        /* ---------- Chat area ---------- */
-        div[data-testid="stChatMessage"] {
-            background-color: var(--clinical-card) !important;
-            border: 1px solid var(--clinical-border);
-            border-radius: 12px;
-        }
-        div[data-testid="stChatMessage"] p {
-            color: var(--clinical-text) !important;
-        }
-        .stChatInput textarea {
-            color: var(--clinical-text) !important;
-        }
-
-        /* Status pill */
-        .status-pill {
-            display: inline-block;
-            font-size: 0.65rem;
+        /* ── Status pill ── */
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.62rem;
             font-weight: 600;
-            padding: 0.15rem 0.5rem;
+            padding: 0.18rem 0.55rem;
             border-radius: 999px;
-            margin-left: 0.3rem;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
             vertical-align: middle;
         }
-        .status-ready { background: #DFF4E8; color: #146C43 !important; }
-        .status-error { background: #FCE4E4; color: #B02A2A !important; }
+        .pill-ready { background: rgba(255,255,255,0.22); color: #FFFFFF; }
+        .pill-error { background: #FCE4E4; color: #B02A2A; }
+
+        /* ── Disclaimer banner ── */
+        .disclaimer {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.6rem;
+            background: var(--amber-bg);
+            border: 1px solid var(--amber-border);
+            border-radius: var(--radius-sm);
+            padding: 0.65rem 1rem;
+            margin-bottom: 1.1rem;
+            font-size: 0.8rem;
+            color: var(--amber);
+            line-height: 1.5;
+        }
+        .disclaimer strong { color: var(--amber); }
+
+        /* ── Quick-topic chips (main area) ── */
+        .chip-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 0.5rem;
+        }
+        .chip-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            margin-bottom: 1.1rem;
+        }
+        .chip {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 0.42rem 0.9rem;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .chip:hover {
+            border-color: var(--teal);
+            color: var(--teal-dark);
+            background: var(--teal-hover);
+        }
+
+        /* ── Empty state ── */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1.5rem;
+        }
+        .empty-state .icon {
+            font-size: 3rem;
+            margin-bottom: 0.75rem;
+        }
+        .empty-state h2 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.35rem;
+        }
+        .empty-state p {
+            font-size: 0.88rem;
+            color: var(--text-muted);
+            max-width: 480px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* ── Chat bubbles ── */
+        div[data-testid="stChatMessage"] {
+            background: var(--surface) !important;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-sm);
+            margin-bottom: 0.5rem;
+        }
+        /* Assistant bubble — subtle left accent */
+        div[data-testid="stChatMessage"][data-testid*="assistant"],
+        div[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
+            border-left: 3px solid var(--teal);
+        }
+
+        /* ── Chat input ── */
+        .stChatInput textarea {
+            border-radius: var(--radius-sm) !important;
+            border-color: var(--border) !important;
+            font-size: 0.93rem !important;
+            padding: 0.75rem 1rem !important;
+            background: var(--surface) !important;
+            color: var(--text-primary) !important;
+        }
+        .stChatInput textarea:focus {
+            border-color: var(--teal) !important;
+            box-shadow: 0 0 0 3px rgba(13,110,107,0.12) !important;
+        }
+
+        /* ── Sidebar ── */
+        section[data-testid="stSidebar"] {
+            background: var(--surface) !important;
+            border-right: 1px solid var(--border);
+        }
+        section[data-testid="stSidebar"] .sidebar-section-label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: var(--teal-dark);
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            margin: 1.2rem 0 0.4rem 0;
+        }
+        section[data-testid="stSidebar"] p,
+        section[data-testid="stSidebar"] small,
+        section[data-testid="stSidebar"] li {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+        section[data-testid="stSidebar"] a {
+            color: var(--teal) !important;
+            text-decoration: none;
+        }
+        section[data-testid="stSidebar"] a:hover { text-decoration: underline; }
+
+        /* Sidebar sample question buttons */
+        section[data-testid="stSidebar"] div[data-testid="stButton"] > button {
+            background: var(--surface) !important;
+            border: 1px solid var(--border) !important;
+            color: var(--text-primary) !important;
+            border-radius: var(--radius-sm) !important;
+            font-size: 0.8rem !important;
+            font-weight: 400 !important;
+            text-align: left !important;
+            width: 100% !important;
+            padding: 0.5rem 0.75rem !important;
+            margin-bottom: 0.3rem !important;
+            transition: all 0.15s ease !important;
+            line-height: 1.4 !important;
+        }
+        section[data-testid="stSidebar"] div[data-testid="stButton"] > button:hover {
+            border-color: var(--teal) !important;
+            color: var(--teal-dark) !important;
+            background: var(--teal-hover) !important;
+        }
+
+        /* Clear chat button */
+        .clear-btn button {
+            background: transparent !important;
+            border: 1px solid var(--border) !important;
+            color: var(--text-muted) !important;
+            border-radius: var(--radius-sm) !important;
+            font-size: 0.78rem !important;
+            padding: 0.3rem 0.7rem !important;
+            transition: all 0.15s ease !important;
+        }
+        .clear-btn button:hover {
+            border-color: #E11D48 !important;
+            color: #E11D48 !important;
+            background: #FFF1F3 !important;
+        }
+
+        /* KDIGO chapter navigator in sidebar */
+        .chapter-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            padding: 0.4rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        .chapter-num {
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--teal);
+            min-width: 1.2rem;
+        }
+
+        /* Spinner override */
+        .stSpinner > div {
+            border-top-color: var(--teal) !important;
+        }
+
+        /* Error / warning boxes */
+        .stAlert {
+            border-radius: var(--radius-sm) !important;
+        }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 # --------------------------------------------------------------------------
-# Sample questions — anchored to what the loaded guidelines can actually
-# answer, since the RAG system only knows what's in the source PDFs
+# Sample questions — grounded in KDIGO 2026 AKI/AKD guideline content
 # --------------------------------------------------------------------------
 SAMPLE_QUESTIONS = [
-    "What is the recommended treatment duration for uncomplicated Staphylococcus aureus bacteremia?",
-    "When is source control indicated in bloodstream infections?",
-    "What criteria support de-escalating empiric antibiotic therapy?",
-    "How should catheter-related bloodstream infections be managed?",
-    "What follow-up blood cultures are recommended to confirm clearance of bacteremia?",
-    "What distinguishes complicated from uncomplicated bacteremia?",
+    "What are the KDIGO 2026 criteria for diagnosing AKI in adults?",
+    "What are the 3 stages of AKI by serum creatinine and urine output?",
+    "What is the multicomponent kidney protection strategy for surgical patients?",
+    "How do I select a baseline creatinine to diagnose AKI?",
+    "When should I initiate renal replacement therapy in AKI?",
+    "Which drugs should I avoid or monitor in patients at risk of AKI?",
+    "What is the approach to contrast-associated AKI prevention?",
+    "How should a patient be followed up after hospital discharge with AKI?",
+    "What are the KDIGO criteria for Acute Kidney Disease (AKD)?",
+    "How is AKI staged in neonates?",
+]
+
+# --------------------------------------------------------------------------
+# KDIGO chapters for sidebar navigator
+# --------------------------------------------------------------------------
+KDIGO_CHAPTERS = [
+    ("1", "AKI & AKD Definition, Identification, Classification"),
+    ("2", "AKI Prediction, Risk Stratification & Diagnosis"),
+    ("3", "Prevention & General Management of AKI"),
+    ("4", "Drug- & Nephrotoxin-Associated AKI"),
+    ("5", "Kidney Replacement Therapy (RRT)"),
+    ("6", "Recovery, Follow-up & Long-term Outcomes"),
 ]
 
 # --------------------------------------------------------------------------
@@ -206,112 +359,185 @@ if "pending_question" not in st.session_state:
     st.session_state.pending_question = None
 
 # --------------------------------------------------------------------------
-# Sidebar — product context, not just code plumbing
+# Sidebar
 # --------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown("### About this tool")
+    # Branding
     st.markdown(
-        "This assistant retrieves answers **only** from hospital antibiotic "
-        "stewardship guideline PDFs loaded into its index. Every answer is "
-        "grounded in a specific document and page - nothing is generated "
-        "from general knowledge."
+        "<p style='font-size:1rem;font-weight:700;color:#0D6E6B;margin-bottom:0.1rem;'>🫘 KDIGO 2026</p>"
+        "<p style='font-size:0.75rem;color:#52706E;margin-top:0;'>AKI / AKD Guideline Assistant</p>",
+        unsafe_allow_html=True,
     )
 
-    st.markdown("### How it works")
-    with st.expander("See the retrieval pipeline", expanded=False):
+    st.markdown("---")
+
+    # About
+    st.markdown("<div class='sidebar-section-label'>About</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<p>Answers are retrieved <strong>exclusively</strong> from the "
+        "<em>KDIGO 2026 Clinical Practice Guideline for Acute Kidney Injury (AKI) "
+        "and Acute Kidney Disease (AKD)</em> — Public Review Draft, March 2026. "
+        "Every answer cites the source page.</p>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
+
+    # KDIGO Chapter Navigator
+    st.markdown("<div class='sidebar-section-label'>Guideline Chapters</div>", unsafe_allow_html=True)
+    for num, title in KDIGO_CHAPTERS:
         st.markdown(
-            "1. Guideline PDFs are split into meaningful chunks and embedded "
-            "into a FAISS vector index.\n"
-            "2. Your question is rewritten into a few clinical phrasings to "
-            "catch synonym mismatches (e.g. *complicated* vs *source "
-            "control*).\n"
-            "3. The best-matching chunks are retrieved and reranked.\n"
-            "4. The model answers **only** from those chunks, citing the "
-            "source filename and page."
+            f"<div class='chapter-item'>"
+            f"<span class='chapter-num'>Ch.{num}</span>"
+            f"<span>{title}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
         )
 
-    st.markdown("### Sample questions")
-    st.caption("Tap a question to try the assistant - answers depend entirely on what's in the loaded guidelines.")
+    st.markdown("---")
+
+    # Sample questions
+    st.markdown("<div class='sidebar-section-label'>Sample Questions</div>", unsafe_allow_html=True)
+    st.caption("Tap to ask the assistant")
     for q in SAMPLE_QUESTIONS:
-        if st.button(q, key=f"sample_{hash(q)}", use_container_width=True):
+        if st.button(q, key=f"sq_{hash(q)}", use_container_width=True):
             st.session_state.pending_question = q
             st.rerun()
 
-    st.markdown("### Limitations")
+    st.markdown("---")
+
+    # Limitations
+    st.markdown("<div class='sidebar-section-label'>Limitations</div>", unsafe_allow_html=True)
     st.markdown(
-        "- Prototyping tool, not for clinical decision-making\n"
-        "- Only answers from the PDFs that were loaded in\n"
-        "- Page numbers come from PDF metadata and may not match the "
-        "printed page exactly\n"
-        "- Always verify the cited source before acting on an answer"
+        "<ul style='padding-left:1rem;margin:0;'>"
+        "<li>Answers sourced only from the loaded guideline PDF</li>"
+        "<li>Not a substitute for nephrology consultation</li>"
+        "<li>Figure/flowchart descriptions are annotated summaries — verify against original</li>"
+        "<li>Always cite and verify the source page before clinical use</li>"
+        "</ul>",
+        unsafe_allow_html=True,
     )
+
+    st.markdown("---")
+
+    # How it works — collapsed by default (not distracting in a clinical setting)
+    with st.expander("How does the retrieval work?", expanded=False):
+        st.markdown(
+            "<ol style='padding-left:1rem;margin:0;font-size:0.8rem;color:#52706E;'>"
+            "<li>The KDIGO PDF is split into structured chunks (tables preserved as Markdown).</li>"
+            "<li>Your question is rephrased 3 ways to catch clinical synonyms.</li>"
+            "<li>The best chunks are retrieved by semantic similarity, then reranked.</li>"
+            "<li>The LLM answers <em>only</em> from those chunks and cites the page.</li>"
+            "</ol>",
+            unsafe_allow_html=True,
+        )
+
+    # Clear conversation
+    st.markdown("---")
+    st.markdown("<div class='sidebar-section-label'>Session</div>", unsafe_allow_html=True)
+    st.markdown("<div class='clear-btn'>", unsafe_allow_html=True)
+    if st.button("🗑️  Clear conversation", key="clear_chat", use_container_width=True):
+        st.session_state.messages = []
+        st.session_state.pending_question = None
+        st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("---")
     st.caption("Built by Sunil Kumar Nallani")
     st.caption("[LinkedIn](https://www.linkedin.com/in/nallani-sunil-kumar-67227a243/) · [GitHub](https://github.com/sunilkumar-nallani/Bacteremia_Clinical_Guideline_Assistant)")
 
 # --------------------------------------------------------------------------
-# Header
+# Main area — Header
 # --------------------------------------------------------------------------
-status_html = (
-    '<span class="status-pill status-ready">Pipeline ready</span>'
+status_pill = (
+    '<span class="pill pill-ready">● Live</span>'
     if PIPELINE_READY
-    else '<span class="status-pill status-error">Pipeline not loaded</span>'
+    else '<span class="pill pill-error">● Pipeline Error</span>'
 )
 st.markdown(
     f"""
     <div class="app-header">
-        <h1>🩺 Bacteremia Clinical Guideline Assistant {status_html}</h1>
-        <p>Grounded, citation-first answers pulled directly from hospital antibiotic stewardship guidelines.</p>
+        <h1>🫘 KDIGO 2026 &nbsp; AKI / AKD Guideline Assistant &nbsp;{status_pill}</h1>
+        <p class="subtitle">
+            Evidence-based answers from the KDIGO 2026 Clinical Practice Guideline for
+            Acute Kidney Injury &amp; Acute Kidney Disease — cited to source, chapter, and page.
+        </p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
+# --------------------------------------------------------------------------
+# Disclaimer — always visible, non-intrusive
+# --------------------------------------------------------------------------
 st.markdown(
     """
-    <div class="disclaimer-strip">
-        <strong>Research and prototyping tool</strong> - not a substitute for clinical judgment or an ID consult.
-        Verify every answer against its cited source before clinical use.
+    <div class="disclaimer">
+        <span style="font-size:1rem;">⚠️</span>
+        <span>
+            <strong>Clinical decision support tool — not a substitute for clinical judgment or nephrology consultation.</strong>
+            This tool retrieves information from the KDIGO 2026 public review draft. Recommendations may change in the
+            final published version. Always verify cited content against the source document before clinical use.
+        </span>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
+# --------------------------------------------------------------------------
+# Pipeline error banner
+# --------------------------------------------------------------------------
 if not PIPELINE_READY:
     st.error(
-        f"The RAG pipeline failed to import: `{PIPELINE_ERROR}`. "
-        "Make sure `build_index.py` has been run and the pipeline module is on the path."
+        f"**Pipeline failed to load:** `{PIPELINE_ERROR}`  \n"
+        "Run `python Build_Index.py` to build the FAISS index, then restart the app."
     )
 
 # --------------------------------------------------------------------------
 # Chat history
 # --------------------------------------------------------------------------
 for message in st.session_state.messages:
-    avatar = "🧑‍⚕️" if message["role"] == "user" else "🩺"
+    avatar = "👨‍⚕️" if message["role"] == "user" else "🫘"
     with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
 
 # --------------------------------------------------------------------------
-# Input — either typed, or triggered by a sample-question chip
+# Empty state — shown when no conversation yet
 # --------------------------------------------------------------------------
-typed_question = st.chat_input("Ask a question about the loaded guidelines...")
+if not st.session_state.messages:
+    st.markdown(
+        """
+        <div class="empty-state">
+            <div class="icon">🫘</div>
+            <h2>Ask a clinical question about AKI or AKD</h2>
+            <p>
+                This assistant searches the KDIGO 2026 guideline and returns
+                evidence-grounded answers with exact page citations.
+                Use the sample questions in the sidebar, or type your own below.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# --------------------------------------------------------------------------
+# Input — typed or triggered by sidebar sample-question chip
+# --------------------------------------------------------------------------
+typed_question = st.chat_input(
+    "Ask about AKI staging, RRT initiation, fluid management, nephrotoxins, follow-up..."
+)
 
 question = st.session_state.pending_question or typed_question
 st.session_state.pending_question = None
 
 if question:
     st.session_state.messages.append({"role": "user", "content": question})
-    with st.chat_message("user", avatar="🧑‍⚕️"):
+    with st.chat_message("user", avatar="👨‍⚕️"):
         st.markdown(question)
 
-    with st.chat_message("assistant", avatar="🩺"):
-        with st.spinner("Searching guidelines..."):
+    with st.chat_message("assistant", avatar="🫘"):
+        with st.spinner("Searching KDIGO 2026 guideline..."):
             answer = answer_question(question)
         st.markdown(answer)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
-
-# Gentle nudge when the conversation is empty
-if not st.session_state.messages:
-    st.info("👋 New here? Try one of the sample questions in the sidebar to see how the assistant cites its sources.")
