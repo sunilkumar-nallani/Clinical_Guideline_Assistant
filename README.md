@@ -38,28 +38,31 @@ or replace an infectious disease (ID) consult. All outputs must be verified agai
 
 ## 🔄 End-to-End Architecture
 
-```
-┌────────────────────────────────────────────────────────┐
-│                   Data Ingestion                       │
-│  KDIGO 2026 PDF (500 pages) + figure_annotations.json  │
-└──────────────────────────┬─────────────────────────────┘
-                           │ pdfplumber (Markdown Tables) + PyMuPDF
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│                   Index Building                       │
-│  RecursiveCharacterTextSplitter (\n\n atomic tables)   │
-│  → e5-mistral-7b-instruct Embeddings → FAISS Index     │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-┌──────────────────────────▼─────────────────────────────┐
-│                 Clinical Query Flow                    │
-│  1. User asks question in Streamlit UI (app.py)        │
-│  2. MultiQueryRetriever expands query & acronyms       │
-│  3. FAISS MMR retrieves diverse candidates (k=10)      │
-│  4. FlashRank Cross-Encoder reranks locally to top 5   │
-│  5. Context formatted with [Source: filename, p.X]     │
-│  6. Qwen-30B LLM generates cited, evidence-based reply │
-└────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    %% ── Ingestion & Indexing Pipeline ──
+    subgraph Ingestion [" 📚 1. Guideline Ingestion & Indexing "]
+        direction LR
+        PDF["KDIGO 2026 PDF\n(500 pages)"] -->|pdfplumber\n+ PyMuPDF| Parser["Markdown Tables\n+ Clean Text Blocks"]
+        Figs["Figure Annotations\n(figure_annotations.json)"] --> Parser
+        Parser -->|RecursiveCharacterSplitter\n\\n\\n table-safe| Chunks["Text & Table Chunks\n(1,250 chunks)"]
+        Chunks -->|e5-mistral-7b-instruct\nEmbeddings| VDB[("FAISS\nVector Store")]
+    end
+
+    %% ── Query & Generation Pipeline ──
+    subgraph Retrieval [" 🩺 2. Clinical Retrieval & Answering "]
+        direction LR
+        User["User Question\n(EN / DE medical terms)"] -->|Qwen-30B| MQ["Multi-Query Expansion\n(3 clinical synonyms)"]
+        MQ -->|MMR Search\nk=10, fetch_k=25| Search["Candidate Chunks\n(up to 30 chunks)"]
+        VDB --> Search
+        Search -->|FlashRank\nLocal Cross-Encoder| Rerank["Top-5 Most Relevant\nChunks"]
+        Rerank --> Formatter["Format Context\nwith [Source, p.X] citations"]
+        Formatter --> LLM["Qwen-30B-Instruct\n(Temperature = 0)"]
+        LLM --> UI["Cited Clinical Answer\nStreamlit MedTech UI"]
+    end
+
+    %% Flow connector
+    Ingestion -.-> Retrieval
 ```
 
 ---
