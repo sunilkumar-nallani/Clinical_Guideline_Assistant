@@ -18,6 +18,13 @@ This project delivers a **grounded, citation-backed conversational assistant** t
 
 ---
 
+## Intended Purpose
+
+This is a research prototype demonstrating grounded retrieval-augmented generation for clinical guideline lookup. It is intended to help clinicians, pharmacists, or students quickly locate guideline-based information during research or education - not to autonomously diagnose, recommend treatment, 
+or replace an infectious disease (ID) consult. All outputs must be verified against the cited source before any clinical use.
+
+---
+
 ## 💡 Key Clinical Features & Upgrades
 
 - **Preserved Clinical Tables:** Unlike standard PDF text extractors that break multi-row criteria, the ingestion engine (`pdfplumber`) extracts tables as intact Markdown grids (`[TABLE START] ... [TABLE END]`). Complex staging grids (e.g., AKI staging by SCr and Urine Output) remain structured and fully aligned.
@@ -120,6 +127,12 @@ streamlit run app.py
 - **Research & Prototyping Only:** This application is designed for research, education, and decision support—it is **not** an autonomous medical device and does not replace professional nephrology consultation or clinical diagnosis.
 - **Human-in-the-Loop:** Clinicians must always verify cited pages and data points before acting on any output.
 - **Guideline Scope:** The assistant's knowledge boundary is strictly limited to the loaded guideline documents.
+
+---
+
+## Regulatory Context (EU AI Act)
+
+This prototype is a retrieval tool grounded in static guideline documents. It is not currently a safety component of a medical device and is not marketed for clinical deployment, so under the AI Act's Article 6 classification logic it would not currently fall under Annex I. If adapted for real clinical use - e.g., directly influencing treatment decisions in a hospital workflow - its intended purpose and safety role would need to be reassessed, likely triggering medical-device (MDR) and Annex I considerations. This project was built with that distinction in mind: strict grounding, mandatory citations, and explicit non-diagnostic framing are deliberate design choices to keep the current version outside high-risk territory while demonstrating the safety principles that would apply if it were scaled toward real use.
 
 ---
 
