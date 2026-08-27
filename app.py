@@ -1,4 +1,5 @@
 import streamlit as st
+import openai
 
 # --------------------------------------------------------------------------
 # Pipeline import — UI still loads and shows a clear message if index is
@@ -538,6 +539,17 @@ if question:
     with st.chat_message("assistant", avatar="🫘"):
         with st.spinner("Searching KDIGO 2026 guideline..."):
             answer = answer_question(question)
+            try:
+                answer = answer_question(question)
+            except openai.InternalServerError:
+                st.error("⚠️ The institutional API server (GWDG) is currently overloaded or restarting. Please wait a moment and try your question again.")
+                st.stop()
+            except openai.AuthenticationError:
+                st.error("⚠️ API connection failed. Please verify the environment credentials.")
+                st.stop()
+            except Exception as e:
+                st.error(f"⚠️ An unexpected error occurred in the retrieval pipeline: {str(e)}")
+                st.stop()
         st.markdown(answer)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
