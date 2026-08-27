@@ -1,111 +1,137 @@
-# 🩺 Bacteremia Clinical Guideline Assistant 
+# 🫘 KDIGO 2026 Nephrology Guideline Assistant
 
-[![Live App](https://img.shields.io/badge/🚀_Live_App-Streamlit-FF4B4B?style=for-the-badge)](https://bacteremia-clinical-guideline-assistant.streamlit.app/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg?style=for-the-badge)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=Streamlit&logoColor=white)](https://streamlit.io/)
 
+A clinical decision support assistant built to query the **KDIGO 2026 Clinical Practice Guideline for Acute Kidney Injury (AKI) and Acute Kidney Disease (AKD)** (Public Review Draft, March 2026). 
 
-Ask a clinical question about bacteremia and get an answer pulled straight 
-from hospital antibiotic stewardship guidelines, with the source document 
-and page number attached to every claim.
-
-**[👉 Try it live here](https://bacteremia-clinical-guideline-assistant.streamlit.app/)**
-
-Built to stop the back-and-forth of flipping through 20-page PDF guidelines for a quick answer. This is a research and prototyping tool, not a replacement for clinical judgment or an ID consult.
-
-**[ This is a DOMAIN agnostic pipeline (isn't tied to bacteremia specifically, point it at a different set of clinical guideline PDFs and it works the same way for another condition.) ]**
+Every answer is strictly grounded in the guideline text, clinical tables, and treatment flowcharts, with exact source document and printed page citations attached to every single claim.
 
 ---
 
-## Intended Purpose
+## 🎯 Why This Exists
 
-This is a research prototype demonstrating grounded retrieval-augmented generation for clinical guideline lookup. It is intended to help clinicians, pharmacists, or students quickly locate guideline-based information during research or education - not to autonomously diagnose, recommend treatment, 
-or replace an infectious disease (ID) consult. All outputs must be verified against the cited source before any clinical use.
+Medical clinical practice guidelines are often 500+ pages long, packed with complex staging grids, diagnostic criteria, and decision trees. When clinicians need to make time-sensitive decisions on the ward—such as determining AKI staging, selecting baseline creatinine, reviewing nephrotoxic medication rules, or planning post-discharge follow-up—flipping through a massive PDF takes valuable time.
 
----
-
-## How It Works
-
-PDFs → chunked by meaning → embedded into a FAISS index
-│
-Question comes in → rewritten into 3 clinical phrasings
-(catches synonym mismatches like "complicated" vs "source control")
-│
-Best-matching chunks retrieved → reranked for relevance
-│
-LLM answers only from those chunks, citing filename + page
+This project delivers a **grounded, citation-backed conversational assistant** that allows clinicians to ask direct questions in natural language (in English or German) and receive evidence-based, page-cited answers in seconds.
 
 ---
 
-## Regulatory Context (EU AI Act)
+## 💡 Key Clinical Features & Upgrades
 
-This prototype is a retrieval tool grounded in static guideline documents. It is not currently a safety component of a medical device and is not marketed for clinical deployment, so under the AI Act's Article 6 classification logic it would not currently fall under Annex I. If adapted for real clinical use - e.g., directly influencing treatment decisions in a hospital workflow - its intended purpose and safety role would need to be reassessed, likely triggering medical-device (MDR) and Annex I considerations. This project was built with that distinction in mind: strict grounding, mandatory citations, and explicit non-diagnostic framing 
-are deliberate design choices to keep the current version outside high-risk territory while demonstrating the safety principles that would apply if it were scaled toward real use.
-
----
-
-## Human Oversight
-
-Every answer requires the user to verify the cited source and page before acting on it. The system is designed to support review, not replace it - it does not make autonomous recommendations and will not answer questions outside the loaded guideline documents.
+- **Preserved Clinical Tables:** Unlike standard PDF text extractors that break multi-row criteria, the ingestion engine (`pdfplumber`) extracts tables as intact Markdown grids (`[TABLE START] ... [TABLE END]`). Complex staging grids (e.g., AKI staging by SCr and Urine Output) remain structured and fully aligned.
+- **Flowchart & Algorithm Ingestion:** Standard RAG pipelines are blind to embedded diagrams and decision trees. This assistant injects manually verified semantic descriptions of critical KDIGO algorithms (e.g., *Figure 9: Multicomponent Kidney Protection Strategy*, *Figure 12: Contrast-Associated AKI Risk Assessment*, *Figure 22: Post-Discharge Follow-up Framework*).
+- **True Printed Page Numbers:** Uses PyMuPDF (`fitz`) to extract logical page numbers matching the document's printed pages, rather than offset PDF index numbers.
+- **Multi-Query Synonym Expansion:** Uses a clinical query generator that expands acronyms and non-English terminology (e.g., German terms like *OAK* $\rightarrow$ *Oral Anticoagulation*, *ANV* $\rightarrow$ *Acute Kidney Injury*, *RRT* $\rightarrow$ *Renal Replacement Therapy*) into targeted medical search queries.
+- **Diverse Retrieval (MMR) & FlashRank Reranking:** Merges candidate chunks across queries using Maximal Marginal Relevance (MMR) for breadth across 500 pages, followed by ultra-fast local cross-encoder reranking (`FlashRank`) to deliver high-precision context to the LLM.
+- **MedTech UI Design:** A modern, clean Streamlit frontend inspired by Apple and Gemini design principles, complete with a KDIGO chapter navigator, clinical disclaimer, and a one-click session reset for ward device handoffs.
 
 ---
 
-## 📊 Evaluation
+## 🔄 End-to-End Architecture
 
-Answer quality was measured with [RAGAS](https://github.com/explodinggym/ragas) across multiple evaluation runs on a held-out test set of clinical questions:
-
-| Metric | Score | What it measures |
-|---|---|---|
-| Faithfulness | ~0.73 | How well the answer sticks to the retrieved sources, without adding unsupported claims |
-| Context Precision | ~0.87 | How relevant the retrieved chunks are to the question |
-| Context Recall | ~0.97 | How well the retrieval step captures all the relevant information available |
-| Answer Relevancy | ~0.75 | How directly the final answer addresses the question asked |
-
-High context recall combined with lower faithfulness suggests the retriever is doing its job well, and most remaining improvement is in how tightly the generation step sticks to the retrieved text = a known trade-off worth tuning further. (Faithfulness (~0.73) is the metric prioritised for improvement, since strict grounding is the core safety requirement of this system - a lower score here matters more than a lower score on relevancy.)
+```
+┌────────────────────────────────────────────────────────┐
+│                   Data Ingestion                       │
+│  KDIGO 2026 PDF (500 pages) + figure_annotations.json  │
+└──────────────────────────┬─────────────────────────────┘
+                           │ pdfplumber (Markdown Tables) + PyMuPDF
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│                   Index Building                       │
+│  RecursiveCharacterTextSplitter (\n\n atomic tables)   │
+│  → e5-mistral-7b-instruct Embeddings → FAISS Index     │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+┌──────────────────────────▼─────────────────────────────┐
+│                 Clinical Query Flow                    │
+│  1. User asks question in Streamlit UI (app.py)        │
+│  2. MultiQueryRetriever expands query & acronyms       │
+│  3. FAISS MMR retrieves diverse candidates (k=10)      │
+│  4. FlashRank Cross-Encoder reranks locally to top 5   │
+│  5. Context formatted with [Source: filename, p.X]     │
+│  6. Qwen-30B LLM generates cited, evidence-based reply │
+└────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Getting Started
+## 🚀 Getting Started
 
+### 1. Clone the repository
 ```bash
 git clone https://github.com/sunilkumar-nallani/Bacteremia_Clinical_Guideline_Assistant.git
 cd Bacteremia_Clinical_Guideline_Assistant
+```
+
+### 2. Set up virtual environment and install dependencies
+```bash
+python -m venv venv
+.\venv\Scripts\activate      # On Windows
+# source venv/bin/activate   # On Linux/macOS
+
 pip install -r requirements.txt
 ```
 
-Add a `.env` file (see `.env.example`):
-
-OPENAI_API_KEY=your_key_here
-OPENAI_API_BASE=your_base_url_here   #optional
-
-
-## Usage
-
-```bash
-python build_index.py     # run once, builds the FAISS index
-streamlit run app.py       # launches the chat interface
+### 3. Environment Configuration
+Create a `.env` file in the project root:
+```env
+OPENAI_API_KEY=your_api_key_here
+OPENAI_API_BASE=https://chat-ai.academiccloud.de/v1   # Optional custom endpoint
 ```
 
-## Tech Stack
+### 4. Build the Vector Store Index
+Ensure the guideline PDF is placed inside `Nephrology_Guidelines/`, then run:
+```bash
+python Build_Index.py
+```
+*This extracts text, tables, and flowchart annotations from the 500-page guideline and creates your local `faiss_index/`.*
 
-LangChain · FAISS · FlashRank · Streamlit · OpenAI-compatible LLM/embeddings API
+### 5. Launch the Clinical Assistant
+```bash
+streamlit run app.py
+```
 
-## Limitations
+---
 
-- Prototyping tool, not for clinical decision-making
-- Only answers from the PDFs you load in, nothing outside them
-- Page numbers come from PDF metadata and may not match the printed page exactly
+## 🩺 Guardrails & Clinical Verification
 
-## Contributing
+1. **Strict Source Grounding:** The assistant is explicitly instructed to answer *only* from retrieved excerpts. If the guideline does not address a clinical scenario (for instance, general outpatient oral anticoagulation regimens), it truthfully states that the information is not in the guideline rather than inventing recommendations.
+2. **Mandatory Citations:** Every single clinical statement includes a direct citation tag: `[KDIGO 2026, p.X]`.
+3. **Recommendation Grading:** Whenever available in the context, specific KDIGO recommendation grades (e.g., *Recommendation 3.2.3, Grade 1B*) are cited.
+4. **Draft Notice:** The system displays a prominent clinical disclaimer indicating that answers are sourced from the *Public Review Draft* and require verification against the final published text and individual clinical judgement.
 
-PRs and issues welcome, whether it's a code fix or a suggestion on how a 
-clinical question should be handled. Domain feedback from clinicians and ID 
-pharmacists is just as valuable as code.
+---
 
-## License
+## 🛠️ Tech Stack
 
-MIT
+- **Frameworks:** [LangChain](https://www.langchain.com/) · [LangChain Classic](https://pypi.org/project/langchain-classic/)
+- **Document Parsing:** [pdfplumber](https://github.com/jsvine/pdfplumber) (Table extraction) · [PyMuPDF](https://pymupdf.readthedocs.io/) (Page labels & text)
+- **Vector Database:** [FAISS (Facebook AI Similarity Search)](https://github.com/facebookresearch/faiss)
+- **Reranker:** [FlashRank](https://github.com/PrithivirajDamodaran/FlashRank) (Local ultra-fast cross-encoder)
+- **LLM & Embeddings:** Qwen-30B / e5-mistral-7b-instruct via OpenAI-compatible API
+- **Frontend UI:** [Streamlit](https://streamlit.io/) with custom clinical CSS
 
-## Contact
+---
 
-**Sunil Kumar Nallani** - sunilkumar.nallani@stud.uni-goettingen.de - [LinkedIn](https://www.linkedin.com/in/nallani-sunil-kumar-67227a243/)
+## ⚠️ Limitations & Ethical Disclaimer
+
+- **Research & Prototyping Only:** This application is designed for research, education, and decision support—it is **not** an autonomous medical device and does not replace professional nephrology consultation or clinical diagnosis.
+- **Human-in-the-Loop:** Clinicians must always verify cited pages and data points before acting on any output.
+- **Guideline Scope:** The assistant's knowledge boundary is strictly limited to the loaded guideline documents.
+
+---
+
+## 👤 Author & Contact
+
+**Sunil Kumar Nallani**  
+- Email: sunilkumar.nallani@stud.uni-goettingen.de  
+- LinkedIn: [linkedin.com/in/nallani-sunil-kumar-67227a243](https://www.linkedin.com/in/nallani-sunil-kumar-67227a243/)  
+- GitHub: [github.com/sunilkumar-nallani](https://github.com/sunilkumar-nallani)
+
+---
+
+## 📄 License
+
+This project is open source and available under the [MIT License](LICENSE).
