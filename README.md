@@ -1,12 +1,12 @@
-# 🫘 KDIGO 2026 Nephrology Guideline Assistant
+# 🫘 Nephrology Clinical Evidence Assistant
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg?style=for-the-badge)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=Streamlit&logoColor=white)](https://streamlit.io/)
 
-A clinical decision support assistant built to query the **KDIGO 2026 Clinical Practice Guideline for Acute Kidney Injury (AKI) and Acute Kidney Disease (AKD)** (Public Review Draft, March 2026). 
+A clinical decision support assistant that queries both **clinical practice guidelines** (e.g., KDIGO 2026 AKI/AKD) and **peer-reviewed research publications** (clinical trials, meta-analyses, reviews) — with a source selector that lets clinicians choose their evidence type.
 
-Every answer is strictly grounded in the guideline text, clinical tables, and treatment flowcharts, with exact source document and printed page citations attached to every single claim.
+Every answer is strictly grounded in the indexed documents, with exact source citations attached to every claim. When searching "Both" sources, the assistant clearly distinguishes between guideline recommendations and research findings.
 
 ---
 
@@ -27,6 +27,7 @@ or replace an infectious disease (ID) consult. All outputs must be verified agai
 
 ## 💡 Key Clinical Features & Upgrades
 
+- **Dual Evidence Sources (Guidelines + Publications):** Clinicians can search **guidelines** (KDIGO 2026), **publications** (research papers, trials), or **both** — with a clean radio selector in the sidebar. When searching both, each answer clearly labels whether a claim comes from a guideline recommendation or a research finding.
 - **Preserved Clinical Tables:** Unlike standard PDF text extractors that break multi-row criteria, the ingestion engine (`pdfplumber`) extracts tables as intact Markdown grids (`[TABLE START] ... [TABLE END]`). Complex staging grids (e.g., AKI staging by SCr and Urine Output) remain structured and fully aligned.
 - **Flowchart & Algorithm Ingestion:** Standard RAG pipelines are blind to embedded diagrams and decision trees. This assistant injects manually verified semantic descriptions of critical KDIGO algorithms (e.g., *Figure 9: Multicomponent Kidney Protection Strategy*, *Figure 12: Contrast-Associated AKI Risk Assessment*, *Figure 22: Post-Discharge Follow-up Framework*).
 - **True Printed Page Numbers:** Uses PyMuPDF (`fitz`) to extract logical page numbers matching the document's printed pages, rather than offset PDF index numbers.
@@ -41,23 +42,25 @@ or replace an infectious disease (ID) consult. All outputs must be verified agai
 ```mermaid
 flowchart LR
     %% ── Ingestion & Indexing Pipeline ──
-    subgraph Ingestion [" 📚 1. Guideline Ingestion & Indexing "]
+    subgraph Ingestion [" 📚 1. Document Ingestion & Indexing "]
         direction LR
-        PDF["KDIGO 2026 PDF\n(500 pages)"] -->|pdfplumber\n+ PyMuPDF| Parser["Markdown Tables\n+ Clean Text Blocks"]
+        GPDF["Guidelines PDFs\n(KDIGO 2026)"] -->|pdfplumber\n+ PyMuPDF| Parser["Markdown Tables\n+ Clean Text Blocks"]
+        PPDF["Publication PDFs\n(Trials, Reviews)"] -->|pdfplumber\n+ PyMuPDF| Parser2["Markdown Tables\n+ Clean Text Blocks"]
         Figs["Figure Annotations\n(figure_annotations.json)"] --> Parser
-        Parser -->|RecursiveCharacterSplitter\n\\n\\n table-safe| Chunks["Text & Table Chunks\n(1,250 chunks)"]
-        Chunks -->|e5-mistral-7b-instruct\nEmbeddings| VDB[("FAISS\nVector Store")]
+        Parser -->|RecursiveCharacterSplitter\n\\n\\n table-safe| GChunks["Guideline Chunks"]
+        Parser2 -->|RecursiveCharacterSplitter\n\\n\\n table-safe| PChunks["Publication Chunks"]
+        GChunks -->|e5-mistral-7b-instruct\nEmbeddings| GVDB[("FAISS\nGuidelines Index")]
+        PChunks -->|e5-mistral-7b-instruct\nEmbeddings| PVDB[("FAISS\nPublications Index")]
     end
 
     %% ── Query & Generation Pipeline ──
     subgraph Retrieval [" 🩺 2. Clinical Retrieval & Answering "]
         direction LR
-        User["User Question\n(EN / DE medical terms)"] -->|Qwen-30B| MQ["Multi-Query Expansion\n(3 clinical synonyms)"]
-        MQ -->|MMR Search\nk=10, fetch_k=25| Search["Candidate Chunks\n(up to 30 chunks)"]
-        VDB --> Search
+        User["User Question\n+ Source Selection"] -->|Qwen-30B| MQ["Multi-Query Expansion\n(3 clinical synonyms)"]
+        MQ -->|MMR Search\nk=10, fetch_k=25| Search["Candidate Chunks\nfrom selected source"]
         Search -->|FlashRank\nLocal Cross-Encoder| Rerank["Top-5 Most Relevant\nChunks"]
         Rerank --> Formatter["Format Context\nwith [Source, p.X] citations"]
-        Formatter --> LLM["Qwen-30B-Instruct\n(Temperature = 0)"]
+        Formatter --> LLM["Qwen-30B-Instruct\n(Source-Aware Prompt)"]
         LLM --> UI["Cited Clinical Answer\nStreamlit MedTech UI"]
     end
 
@@ -91,12 +94,14 @@ OPENAI_API_KEY=your_api_key_here
 OPENAI_API_BASE=https://chat-ai.academiccloud.de/v1   # Optional custom endpoint
 ```
 
-### 4. Build the Vector Store Index
-Ensure the guideline PDF is placed inside `Nephrology_Guidelines/`, then run:
+### 4. Build the Vector Store Indexes
+Place your guideline PDFs in `documents/guidelines/` and any research publication PDFs in `documents/publications/`, then run:
 ```bash
 python Build_Index.py
 ```
-*This extracts text, tables, and flowchart annotations from the 500-page guideline and creates your local `faiss_index/`.*
+*This builds separate FAISS indexes for guidelines and publications. The app will show available source types based on which indexes were built.*
+
+> **Note:** The app also supports the legacy folder structure (`Nephrology_Guidelines/`) for backward compatibility.
 
 ### 5. Launch the Clinical Assistant
 ```bash
@@ -107,10 +112,11 @@ streamlit run app.py
 
 ## 🩺 Guardrails & Clinical Verification
 
-1. **Strict Source Grounding:** The assistant is explicitly instructed to answer *only* from retrieved excerpts. If the guideline does not address a clinical scenario (for instance, general outpatient oral anticoagulation regimens), it truthfully states that the information is not in the guideline rather than inventing recommendations.
-2. **Mandatory Citations:** Every single clinical statement includes a direct citation tag: `[KDIGO 2026, p.X]`.
-3. **Recommendation Grading:** Whenever available in the context, specific KDIGO recommendation grades (e.g., *Recommendation 3.2.3, Grade 1B*) are cited.
-4. **Draft Notice:** The system displays a prominent clinical disclaimer indicating that answers are sourced from the *Public Review Draft* and require verification against the final published text and individual clinical judgement.
+1. **Strict Source Grounding:** The assistant is explicitly instructed to answer *only* from retrieved excerpts. If the indexed documents do not address a clinical scenario, it truthfully states that the information is not available rather than inventing recommendations.
+2. **Mandatory Citations:** Every single clinical statement includes a direct citation tag: `[KDIGO 2026, p.X]` for guidelines or `[Source: filename, p.X]` for publications.
+3. **Source Type Tagging:** In "Both" mode, each claim is explicitly labeled as coming from a guideline recommendation or a research finding, so clinicians can weigh evidence appropriately.
+4. **Recommendation Grading:** Whenever available in the context, specific KDIGO recommendation grades (e.g., *Recommendation 3.2.3, Grade 1B*) are cited.
+5. **Draft Notice:** The system displays a prominent clinical disclaimer indicating that answers are sourced from indexed documents and require verification against the original text and individual clinical judgement.
 
 ---
 
@@ -129,7 +135,7 @@ streamlit run app.py
 
 - **Research & Prototyping Only:** This application is designed for research, education, and decision support—it is **not** an autonomous medical device and does not replace professional nephrology consultation or clinical diagnosis.
 - **Human-in-the-Loop:** Clinicians must always verify cited pages and data points before acting on any output.
-- **Guideline Scope:** The assistant's knowledge boundary is strictly limited to the loaded guideline documents.
+- **Document Scope:** The assistant's knowledge boundary is strictly limited to the loaded guideline and publication PDFs. It does not search the internet or external databases.
 
 ---
 
