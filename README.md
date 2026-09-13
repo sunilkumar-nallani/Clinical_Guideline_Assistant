@@ -6,6 +6,8 @@
 
 A clinical decision support assistant that queries both **clinical practice guidelines** (e.g., KDIGO 2026 AKI/AKD) and **peer-reviewed research publications** (clinical trials, meta-analyses, reviews) — with a source selector that lets clinicians choose their evidence type.
 
+Link : https://clinical-guidelines-assistant.streamlit.app/
+
 Every answer is strictly grounded in the indexed documents, with exact source citations attached to every claim. When searching "Both" sources, the assistant clearly distinguishes between guideline recommendations and research findings.
 
 ---
